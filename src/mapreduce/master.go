@@ -28,5 +28,63 @@ func (mr *MapReduce) KillWorkers() *list.List {
 
 func (mr *MapReduce) RunMaster() *list.List {
   // Your code here
+  mappers := make(chan string, mr.nMap)
+  reducers := make(chan string, mr.nReduce)
+  completedMappers := make(chan int)
+  completedReducers := make(chan int)
+
+  //find workers and store in mappers and reducers
+  go func(){
+    for elem := range mr.registerChannel {
+        //fmt.Println(elem)
+        mappers <- elem
+        reducers <- elem
+    }
+  }()
+  println("hello world\n");
+  //run mapper
+  for i:=0; i < mr.nMap; i++ {
+      args := new(DoJobArgs)
+      args.File = mr.file
+      args.Operation = Map
+      args.JobNumber = i
+      args.NumOtherPhase = mr.nReduce
+      go func(){
+          mapper := <- mappers
+          var reply DoJobReply
+          ok := call(mapper, "Worker.DoJob", args, &reply)
+          if ok == false{
+              fmt.Printf("Mapper: worker %s error\n", mapper)
+          }
+          mappers <- mapper
+          completedMappers <- args.JobNumber
+      }()
+  }
+  for i:=0; i < mr.nMap; i++ {
+      <- completedMappers
+  }
+  println("map phase done")
+  //run reducer
+  for i:=0; i < mr.nReduce; i++ {
+      //go func(){
+          args := new(DoJobArgs)
+          args.File = mr.file
+          args.Operation = Reduce
+          args.NumOtherPhase = mr.nMap
+          args.JobNumber = i
+      go func(){    
+          reducer := <- reducers
+          reply := new(DoJobReply)
+          ok := call(reducer, "Worker.DoJob", args, &reply)
+          if ok == false{
+              fmt.Printf("Reducer: worker %d error\n", reducer)
+          }
+          reducers <- reducer
+          completedReducers <- args.JobNumber
+      }()
+  }
+  for i:=0; i < mr.nReduce; i++{
+      <- completedReducers
+  }
   return mr.KillWorkers()
 }
