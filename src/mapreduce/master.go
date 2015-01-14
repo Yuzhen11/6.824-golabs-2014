@@ -28,7 +28,7 @@ func (mr *MapReduce) KillWorkers() *list.List {
 
 func (mr *MapReduce) RunMaster() *list.List {
   // Your code here
-  mappers := make(chan string, mr.nMap)
+  mappers := make(chan string, mr.nMap) // buffer size should equal to worker size
   reducers := make(chan string, mr.nReduce)
   completedMappers := make(chan int)
   completedReducers := make(chan int)
@@ -53,8 +53,18 @@ func (mr *MapReduce) RunMaster() *list.List {
           mapper := <- mappers
           var reply DoJobReply
           ok := call(mapper, "Worker.DoJob", args, &reply)
-          if ok == false{
-              fmt.Printf("Mapper: worker %s error\n", mapper)
+          for ok == false{
+              fmt.Printf("Mapper: worker:%s job:%d error\n", mapper, args.JobNumber)
+              //worker fail
+              mapper := <- mappers
+              ok = call(mapper, "Worker.DoJob", args, &reply)
+              if ok == false{
+                 fmt.Printf("fail again!!!")    
+              }else {
+                 mappers <- mapper
+                 completedMappers <- args.JobNumber
+                 return 
+              }
           }
           mappers <- mapper
           completedMappers <- args.JobNumber
@@ -76,8 +86,18 @@ func (mr *MapReduce) RunMaster() *list.List {
           reducer := <- reducers
           reply := new(DoJobReply)
           ok := call(reducer, "Worker.DoJob", args, &reply)
-          if ok == false{
-              fmt.Printf("Reducer: worker %d error\n", reducer)
+          for ok == false{
+              fmt.Printf("Reducer: worker:%s job:%d error\n", reducer, args.JobNumber)
+              //worker fail
+              reducer := <- reducers
+              ok = call(reducer, "Worker.DoJob", args, &reply)
+              if ok == false{
+                 fmt.Printf("fail again!!!")    
+              } else { 
+                 reducers <- reducer
+                 completedReducers <- args.JobNumber
+                 return 
+              }
           }
           reducers <- reducer
           completedReducers <- args.JobNumber
